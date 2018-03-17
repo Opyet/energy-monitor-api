@@ -47,7 +47,7 @@ class DbHandler {
         return $this->query = @mysqli_query($this->con, $query);
     }
     
-    public function insert($table,$values = array(),$cols = null){
+    public function insert($table,$values = array(),$cols = null){ //('table_name',[array of values],'corresponding columns')
         //NOTE: $values must be an array
 
         if($this->tableExists($table)){
@@ -130,7 +130,7 @@ class DbHandler {
 //            print_r($update_query);
             $update = @mysqli_query($this->con,$update_query);
             if($update){
-                return $set_query;
+                return $update;
             }else{
                 return false;
             }

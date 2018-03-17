@@ -67,15 +67,9 @@ class DbEntry{
     }
 
     public function setReading($node,$reading){
-        //accumulated reading for the day
-        $localtime = localtime();
-
-        $currentTime = ($localtime[2]*3600)+($localtime[1]*60)+($localtime[0]);
-        $timeDayStarted = (time() - $currentTime); //using the time spent since 1960
-
-        $timeMonthStarted = (time() - (($localtime[3]*86400)+$currentTime));
-//        return $timeDayStarted;
-        return strtotime("this month",time()).'<br>'.$timeMonthStarted ;
+        $Db = new DbHandler();
+        $todayReading = 0.0;
+        $thisMonthReading = 0.0;
 
 //        [tm_sec] - seconds
 //        [tm_min] - minutes
@@ -88,9 +82,67 @@ class DbEntry{
 //        [tm_isdst] - Is daylight savings time in effect
 
 
-//        $Db = new DbHandler();
-//        $insert = $Db->insert();
+        //accumulated reading for the day
+        $localtime = localtime(time(),true);
+        $currentTime = time();
+
+
+        $timeTomorrowStarts = strtotime('tomorrow', $currentTime);
+        $thisMonth = $localtime['tm_mon'] + 1;
+        $nextMonth = $localtime['tm_mon'] + 2;
+        if($localtime['tm_mon'] == 11){
+            $year = $localtime['tm_year']+1901;
+        }else{
+            $year = $localtime['tm_year']+1900;
+        }
+
+        $timeTodayStarted = strtotime('today');
+        $timeThisMonthStarted = strtotime('01-'.$thisMonth.'-'.$year, $currentTime);
+        $timeNextMonthStarts = strtotime('01-'.$nextMonth.'-'.$year, $currentTime);
+        $timeThisYearStarted = strtotime('01-01-'.$year, $currentTime);
+
+//        $timeNextMonthStarts = $nextMonth - (($localtime['tm_mday']-1) * 24 * 60 *60) + ($localtime['tm_hour']* 60 *60) - ($localtime['tm_min'] *60);
+
+//        return date("F j, Y, g:i a",$timeTomorrowStarts). '<br><br>'. date("F j, Y, g:i a",$timeNextMonthStarts);
+       // return date("F j, Y, g:i a",$timeTodayStarted). '<br><br>'. date("F j, Y, g:i a",$timeThisMonthStarted). '<br><br>'. date("F j, Y, g:i a",$timeThisYearStarted);
+
+
+        //fetch the last record on table
+        $select = $Db->select('readings','*',"nodeId = '$node'",'created DESC LIMIT 1');
+        $prevTimestamp = $select[0]['created'];
+        $prevTimestamp = strtotime($prevTimestamp);
+        $prevDayAcc = $select[0]['dayAccumulation'];
+        $prevMonAcc = $select[0]['monthAccumulation'];
+        $prevYearAcc = $select[0]['yearAccumulation'];
+
+        //DETERMINE DAILY READING
+        if($timeTodayStarted < $prevTimestamp){ //check if a new day has started
+            $todayReading = $prevDayAcc + $reading;
+        }else{ $todayReading = $reading;}
+
+        //DETERMINE MONTHLY READING
+        if($timeThisMonthStarted < $prevTimestamp){ //check if a month day has started
+            $thisMonthReading = $prevMonAcc + $reading;
+        }else{ $thisMonthReading = $reading;}
+
+        //DETERMINE YEARLY READING
+        if($timeThisYearStarted < $prevTimestamp){ //check if a year day has started
+            $thisYearReading = $prevYearAcc + $reading;
+        }else{ $thisYearReading = $reading;}
+
+        
+
+        $insert = $Db->insert('readings',[$node,$reading,$todayReading,$thisMonthReading,$thisYearReading,'NOW()'],'nodeId,reading,dayAccumulation,monthAccumulation,yearAccumulation,created');
+
+        if(is_int($insert)){
+            $this->result = true;
+        }else{
+            $this->result = false;
+        }
+        return $this->result;
+
     }
+
     public function getLastReading($node){
         $Db = new DbHandler();
         $select = $Db->select('readings','*',"nodeId = '$node'",'created DESC');
@@ -103,9 +155,113 @@ class DbEntry{
         return $this->result;
     }
 
-    public function getDayReading(){}
-    public function  getMonthReading(){}
-    public function  getYearReading(){}
-    public function  setIndex(){}
-    public function  getIndex(){}
+    public function getDayReading($node,$day){ //format yyyy-mm-dd
+        $Db = new DbHandler();
+
+        $dayArray = explode('-',$day);
+        $dayEnd = $dayArray[0].'-'.$dayArray[1].'-'.($dayArray[2]+1).' 00:00:00';
+        $day = $day.' 00:00:00';
+//        $day = strtotime($day);
+//        $dayEnd = $day + (24*60*60);
+        $select = $Db->select('readings','*',"nodeId = '$node' AND created < '$dayEnd' AND created >= '$day'",'created DESC');
+
+        if(count($Db->query_array)>0){
+            $this->result = $Db->query_array;//accumulated reading of date successfully fetched
+        }elseif($select == false){
+            $this->result = 0;//no reading belonging to node in db for that date
+        }
+        else{
+            $this->result = 0;//no reading belonging to node in db for that date
+        }
+        return $this->result;
+    }
+
+
+
+    public function  getMonthReading($node,$month){//format yyyy-mm
+        $Db = new DbHandler();
+
+        $dateArray = explode('-',$month);
+        $monthEnd = $dateArray[0].'-'.($dateArray[1]+1).'-01 00:00:00';
+        $month = $month.'-01 00:00:00';
+
+        $select = $Db->select('readings','*',"nodeId = '$node' AND created < '$monthEnd' AND created >= '$month'",'created DESC');
+
+        if(count($Db->query_array)>0){
+            $this->result = $Db->query_array;//accumulated reading of date successfully fetched
+        }elseif($select == false){
+            $this->result = 0;//no reading belonging to node in db for that date
+        }
+        else{
+            $this->result = 0;//no reading belonging to node in db for that date
+        }
+        return $this->result;
+    }
+    public function  getYearReading($node,$year){//format yyyy
+        $Db = new DbHandler();
+
+        $yearEnd = ($year +1).'-01-01 00:00:00';
+        $year = $year.'-01-01 00:00:00';
+
+        $select = $Db->select('readings','*',"nodeId = '$node' AND created < '$yearEnd' AND created >= '$year'",'created DESC');
+
+        if(count($Db->query_array)>0){
+            $this->result = $Db->query_array;//accumulated reading of date successfully fetched
+        }elseif($select == false){
+            $this->result = 0;//no reading belonging to node in db for that date
+        }
+        else{
+            $this->result = 0;//no reading belonging to node in db for that date
+        }
+        return $this->result;
+    }
+
+    public function  setIndex($node,$daily,$monthly,$yearly){
+        if($daily==null && $monthly ==null && $yearly==null){
+            return 'values empty';
+        }else{
+            $Db = new DbHandler();
+
+            $select = $Db->select('nodes','*',"id = '$node'");
+
+            if(count($Db->query_array)>0){
+                if($daily == null){
+                    $daily = $Db->query_array[0]['dayIndex'];
+                }
+                if($monthly == null){
+                    $monthly = $Db->query_array[0]['monthIndex'];
+                }
+                if($yearly == null){
+                    $yearly = $Db->query_array[0]['yearIndex'];
+                }
+
+                $update = $Db->update('nodes',['dayIndex => '.$daily,'monthIndex => '.$monthly,'yearIndex => '.$yearly],['id => '.$node]);
+                return true;
+
+            }elseif(empty($select)){
+                return 'node not found';
+            }
+            else{
+                return 'node not found';
+            }
+        }
+    }
+    public function  getIndex($node){
+        $Db = new DbHandler();
+
+        $select = $Db->select('nodes','*',"id = '$node'");
+
+        if(count($Db->query_array)>0){
+            $this->result = $Db->query_array[0];
+
+        }elseif(empty($select)){
+            return 'node not found';
+        }else{
+            $this->result = 0;
+        }
+        return $this->result;
+    }
+    // http://arduino.esp8266.com/stable/package_esp8266com_index.json
 }
+
+
